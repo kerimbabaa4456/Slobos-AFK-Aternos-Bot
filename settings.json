@@ -29,14 +29,15 @@
     "chat-messages": {
       "enabled": true,
       "repeat": true,
-      "repeat-delay": 120,
+      "repeat-delay": 180,
+      "random": true,
       "messages": [
-        "ensardan daha iyiyim mk",
         "Kerim benim efendimdir!",
         "I like to play Minecraft!",
-        "sikgoko da kimmis ya afkbotbabapiro varken",
         "olm odun kasın laow",
-        "afkbot a chat e mesaj yazması icin kerim ile pazarlik yapin"
+        "afkbot a chat e mesaj yazması icin kerim ile pazarlik yapin",
+        "bi bot yazdıramayan yapay zeka da gitsin bokunda gülle oynasın",
+        "iki qoaşığk qoymağk"
       ]
     },
     "chat-log": true,
@@ -61,7 +62,7 @@
     }
   },
   "modules": {
-    "avoidMobs": true,
+    "avoidMobs": false,
     "combat": true,
     "beds": false,
     "chat": true,
@@ -69,6 +70,9 @@
   },
   "combat": {
     "attack-mobs": true,
+    "attack-players": true,
+    "retaliate": true,
+    "forget-attacker-time": 30000,
     "auto-eat": true
   },
   "beds": {
