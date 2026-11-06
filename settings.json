@@ -6,8 +6,8 @@
     "type": "offline"
   },
   "server": {
-    "ip": "zeynepsuraa4456.aternos.me",
-    "port": 29839,
+    "ip": "herbokologlar.aternos.me",
+    "port": 13401,
     "version": "1.21.11",
     "try-creative": false
   },
@@ -35,8 +35,7 @@
         "Kerim benim efendimdir!",
         "I like to play Minecraft!",
         "olm odun kasın laow",
-        "afkbot a chat e mesaj yazması icin kerim ile pazarlik yapin",
-        "iki qoaşığk qoymağk"
+        "afkbot a chat e mesaj yazması icin kerim ile pazarlik yapin"
       ]
     },
     "chat-log": true,
