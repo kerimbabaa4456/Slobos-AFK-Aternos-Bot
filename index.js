@@ -2,136 +2,121 @@
 
 const { addLog, getLogs } = require("./logger");
 const mineflayer = require("mineflayer");
-const { pathfinder } = require("mineflayer-pathfinder");
+const { Movements, pathfinder, goals } = require("mineflayer-pathfinder");
+const { GoalBlock } = goals;
 const config = require("./settings.json");
 const express = require("express");
 const http = require("http");
+const https = require("https");
 
+// ============================================================
+// EXPRESS SERVER - Keep Render/Aternos alive
+// ============================================================
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 5000;
 
+// Bot state tracking
 let botState = {
   connected: false,
+  lastActivity: Date.now(),
+  reconnectAttempts: 0,
   startTime: Date.now(),
-  reconnectAttempts: 0
+  errors: [],
+  wasThrottled: false,
 };
 
-let bot = null;
-
-// ============================================================
-// MINEFLAYER BOT CREATION & ATERNOS KEEPALIVE FIX
-// ============================================================
-function createBot() {
-  if (bot) return;
-
-  addLog("[control] Bot başlatılıyor...", "control");
-  botState.reconnectAttempts++;
-
-  bot = mineflayer.createBot({
-    host: config.server.ip,
-    port: config.server.port,
-    username: config.name,
-    version: config.version || false,
-    // Aternos'un anlık lag/TPS düşüşlerinde hemen kick atmaması için zaman aşımı 60 sn
-    checkTimeoutInterval: 60000
-  });
-
-  bot.loadPlugin(pathfinder);
-
-  // ATERNOS KEEP-ALIVE KICK ÖNLEYİCİ:
-  // Sunucudan keep_alive paketi geldiği an sıraya almadan anında pong yansıtır.
-  bot._client.on("packet", (data, metadata) => {
-    if (metadata.name === "keep_alive" || metadata.name === "keepAlive") {
-      try {
-        bot._client.write(metadata.name, data);
-      } catch (err) {
-        // Hata durumunda sessizce geç
-      }
-    }
-  });
-
-  bot.on("spawn", () => {
-    botState.connected = true;
-    botState.startTime = Date.now();
-    botState.reconnectAttempts = 0;
-    addLog("[success] Bot sunucuya katıldı ve spawn oldu!", "success");
-  });
-
-  bot.on("end", (reason) => {
-    botState.connected = false;
-    addLog("[warn] Bot sunucudan ayrıldı. Sebep: " + reason, "warn");
-    bot = null;
-    // Otomatik Yeniden Bağlanma (10 saniye sonra)
-    setTimeout(() => {
-      if (!bot) createBot();
-    }, 10000);
-  });
-
-  bot.on("error", (err) => {
-    botState.connected = false;
-    addLog("[error] Bot hatası: " + err.message, "error");
-  });
-
-  bot.on("chat", (username, message) => {
-    if (username === bot.username) return;
-    addLog("[chat] <" + username + "> " + message, "default");
-  });
-}
-
-// ============================================================
-// WEB SERVER ENDPOINTS (DASHBOARD & LOGS)
-// ============================================================
-
-app.get("/", (req, res) => {
+// Health check endpoint for monitoring
+app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
       <head>
-        <title>AFK Bot Panel</title>
+        <title>${config.name} Dashboard</title>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" media="print" onload="this.media='all'"
+              href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
         <style>
-          body { font-family: sans-serif; background: #0d1117; color: #e6edf3; padding: 20px; text-align: center; }
-          .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; max-width: 400px; margin: 20px auto; }
-          .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin: 5px; }
-          .btn-start { background: #238636; color: white; }
-          .btn-stop { background: #da3633; color: white; }
-          a { color: #58a6ff; text-decoration: none; }
-        </style>
-      </head>
-      <body>
-        <h1>AFK Bot Dashboard</h1>
-        <div class="card">
-          <h3>Sunucu: ${config.server.ip}</h3>
-          <p>Durum: <b id="status">Yükleniyor...</b></p>
-          <button class="btn btn-start" onclick="fetch('/start',{method:'POST'}).then(()=>location.reload())">Başlat</button>
-          <button class="btn btn-stop" onclick="fetch('/stop',{method:'POST'}).then(()=>location.reload())">Durdur</button>
-          <br><br>
-          <a href="/logs">Logları Görüntüle</a>
-        </div>
-        <script>
-          fetch('/health').then(r=>r.json()).then(d=>{
-            document.getElementById('status').innerText = d.status === 'connected' ? 'Bağlı (Online)' : 'Bağlı Değil (Offline)';
-            document.getElementById('status').style.color = d.status === 'connected' ? '#3fb950' : '#f85149';
-          });
-        </script>
-      </body>
-    </html>
-  `);
-});
+          *, *::before, *::after { box-sizing: border-box; }
 
-app.get("/health", (req, res) => {
-  res.json({
-    status: botState.connected ? "connected" : "disconnected",
-    uptime: Math.floor((Date.now() - botState.startTime) / 1000),
-    coords: bot && bot.entity ? bot.entity.position : null,
-  });
-});
+          body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 24px;
+          }
 
-app.get("/logs", (req, res) => {
-  const logs = getLogs();
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Bot Log
+          main { width: 100%; max-width: 400px; }
+
+          header { margin-bottom: 28px; }
+          header h1 {
+            font-size: 26px;
+            font-weight: 700;
+            color: #f0f6fc;
+            margin: 0;
+            line-height: 1.2;
+          }
+          header p {
+            font-size: 14px;
+            color: #8b949e;
+            margin: 6px 0 0;
+            line-height: 1.5;
+          }
+
+          .status-section {
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: background 0.3s, border-color 0.3s;
+          }
+          .status-section.online  { background: #0d2218; border: 2px solid #238636; }
+          .status-section.offline { background: #200d0d; border: 2px solid #da3633; }
+
+          .status-icon {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; flex-shrink: 0;
+            transition: background 0.3s;
+          }
+          .status-icon.online  { background: #238636; }
+          .status-icon.offline { background: #da3633; }
+
+          .status-label { font-size: 18px; font-weight: 700; line-height: 1.2; transition: color 0.3s; }
+          .status-label.online  { color: #3fb950; }
+          .status-label.offline { color: #f85149; }
+          .status-detail { font-size: 13px; color: #8b949e; margin-top: 3px; }
+
+          dl { margin: 0; }
+          .stat-card {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 10px;
+          }
+          dt { font-size: 12px; color: #8b949e; font-weight: 600; margin-bottom: 4px; }
+          dd { margin: 0; font-size: 17px; font-weight: 600; color: #e6edf3; line-height: 1.3; }
+          .stat-detail { margin: 4px 0 0; font-size: 11px; color: #6e7681; }
+
+          .controls { margin-top: 8px; }
+          .btn-grid { display: grid; gap: 10px; margin-bottom: 10px; }
+          .btn-grid-2 { grid-template-columns: 1fr 1fr; }
+
+          .btn-primary {
+            min-height: 52px; border-radius: 10px;
+            font-size: 15px; font-weight: 700;
+            cursor: pointer; letter-spacing: 0.3px;
+            transition: opacity 0.2s, filter 0.2s;
+            font-family: inherit;
+          }
+          .btn-primary:hover
