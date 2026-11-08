@@ -40,7 +40,6 @@ function createBot() {
     port: config.server.port,
     username: config.name,
     version: config.version || false,
-    // Aternos sunucu dalgalanmalarında hemen kick yemesini önlemek için timeout süresi uzatıldı
     checkTimeoutInterval: 60000 
   });
 
@@ -64,7 +63,6 @@ function createBot() {
     botState.connected = false;
     addLog(`[warn] Bot sunucudan ayrıldı. Sebep: ${reason}`, "warn");
     bot = null;
-    // Otomatik yeniden bağlanma (10 saniye sonra)
     setTimeout(() => {
       if (!bot) createBot();
     }, 10000);
@@ -77,7 +75,7 @@ function createBot() {
 
   bot.on('chat', (username, message) => {
     if (username === bot.username) return;
-    addLog(`[chat] <${username}>${message}`, "default");
+    addLog(`[chat] <${username}> ${message}`, "default");
   });
 }
 
@@ -208,4 +206,52 @@ app.get('/', (req, res) => {
             return sec + ' seconds';
           }
           async function update() {
-            try
+            try {
+              const r = await fetch('/health');
+              const data = await r.json();
+              const online = data.status === 'connected';
+              const section = document.getElementById('status-section');
+              const icon    = document.getElementById('status-icon');
+              const label   = document.getElementById('status-label');
+              const detail  = document.getElementById('status-detail');
+
+              section.className = 'status-section ' + (online ? 'online' : 'offline');
+              icon.className    = 'status-icon '    + (online ? 'online' : 'offline');
+              icon.textContent  = online ? '✓' : '✗';
+              label.className   = 'status-label '   + (online ? 'online' : 'offline');
+              label.textContent = online ? 'Connected' : 'Disconnected';
+              detail.textContent = online ? 'Bot is active on the server' : 'Attempting to reconnect';
+              document.getElementById('uptime-text').textContent = formatUptime(data.uptime);
+
+              if (data.coords) {
+                document.getElementById('coords-text').textContent = 'X ' + Math.floor(data.coords.x) + ', Y ' + Math.floor(data.coords.y) + ', Z ' + Math.floor(data.coords.z);
+              } else {
+                document.getElementById('coords-text').textContent = 'Searching…';
+              }
+            } catch (e) {
+              const label = document.getElementById('status-label');
+              label.className = 'status-label offline';
+              label.textContent = 'Unreachable';
+            }
+          }
+          async function startBot() {
+            const r = await fetch('/start', { method: 'POST' });
+            const data = await r.json();
+            alert(data.success ? 'Bot started!' : data.msg);
+            update();
+          }
+          async function stopBot() {
+            const r = await fetch('/stop', { method: 'POST' });
+            const data = await r.json();
+            alert(data.success ? 'Bot stopped!' : data.msg);
+            update();
+          }
+          setInterval(update, 5000);
+          update();
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+app
