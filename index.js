@@ -82,15 +82,15 @@ server.listen(PORT, () => {
 let bot;
 
 function createBot() {
-  console.log(`[Bot] Connecting to ${config.server.ip}:${config.server.port} as ${config.bot-account.username}...`);
+  console.log(`[Bot] Connecting to ${config.server.ip}:${config.server.port} as ${config['bot-account'].username}...`);
 
   // Host ve Portu ayırıyoruz (Aternos port desteği için)
   bot = mineflayer.createBot({
     host: config.server.ip,
     port: config.server.port,
-    username: config.bot-account.username,
+    username: config['bot-account'].username,
     version: config.server.version,
-    auth: config.bot-account.type // offline
+    auth: config['bot-account'].type // offline
   });
 
   bot.loadPlugin(pathfinder);
@@ -162,4 +162,3 @@ function startAutomation() {
 
 // Botu ilk kez başlat
 createBot();
-        
