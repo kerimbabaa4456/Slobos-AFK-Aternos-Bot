@@ -7,7 +7,6 @@ const { GoalBlock } = goals;
 const config = require("./settings.json");
 const express = require("express");
 const http = require("http");
-const https = require("https");
 
 // ============================================================
 // EXPRESS SERVER - Keep Render/Aternos alive
@@ -23,10 +22,9 @@ let botState = {
   reconnectAttempts: 0,
   startTime: Date.now(),
   errors: [],
-  wasThrottled: false,
 };
 
-// Health check endpoint for monitoring
+// Health check endpoint for monitoring dashboard
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -35,11 +33,9 @@ app.get('/', (req, res) => {
         <title>${config.name} Dashboard</title>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link rel="stylesheet" media="print" onload="this.media='all'"
-              href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
         <style>
           *, *::before, *::after { box-sizing: border-box; }
-
           body {
             font-family: 'Inter', -apple-system, sans-serif;
             background: #0d1117;
@@ -51,72 +47,119 @@ app.get('/', (req, res) => {
             margin: 0;
             padding: 24px;
           }
+          main { width: 100%; max-width: 400px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; }
+          header h1 { font-size: 22px; color: #f0f6fc; margin: 0 0 8px; }
+          header p { font-size: 13px; color: #8b949e; margin: 0 0 20px; }
+          .status { font-weight: 600; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 16px; }
+          .status.online { background: #0d2218; color: #3fb950; border: 1px solid #238636; }
+          .status.offline { background: #200d0d; color: #f85149; border: 1px solid #da3633; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <header>
+            <h1>🤖 ${config.name}</h1>
+            <p>Target Server: ${config.server.ip}</p>
+          </header>
+          <div class="status ${botState.connected ? 'online' : 'offline'}">
+            Status: ${botState.connected ? 'ONLINE (Connected)' : 'OFFLINE (Disconnected)'}
+          </div>
+          <div>Uptime: ${Math.floor((Date.now() - botState.startTime) / 1000)}s</div>
+        </main>
+      </body>
+    </html>
+  `);
+});
 
-          main { width: 100%; max-width: 400px; }
+const server = http.createServer(app);
+server.listen(PORT, () => {
+  console.log(`[Express] Web dashboard running on port ${PORT}`);
+});
 
-          header { margin-bottom: 28px; }
-          header h1 {
-            font-size: 26px;
-            font-weight: 700;
-            color: #f0f6fc;
-            margin: 0;
-            line-height: 1.2;
-          }
-          header p {
-            font-size: 14px;
-            color: #8b949e;
-            margin: 6px 0 0;
-            line-height: 1.5;
-          }
+// ============================================================
+// MINEFLAYER BOT CREATION & LOGIC
+// ============================================================
+let bot;
 
-          .status-section {
-            border-radius: 12px;
-            padding: 20px 24px;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            transition: background 0.3s, border-color 0.3s;
-          }
-          .status-section.online  { background: #0d2218; border: 2px solid #238636; }
-          .status-section.offline { background: #200d0d; border: 2px solid #da3633; }
+function createBot() {
+  console.log(`[Bot] Connecting to ${config.server.ip}:${config.server.port} as ${config.bot-account.username}...`);
 
-          .status-icon {
-            width: 44px; height: 44px;
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px; flex-shrink: 0;
-            transition: background 0.3s;
-          }
-          .status-icon.online  { background: #238636; }
-          .status-icon.offline { background: #da3633; }
+  // Host ve Portu ayırıyoruz (Aternos port desteği için)
+  bot = mineflayer.createBot({
+    host: config.server.ip,
+    port: config.server.port,
+    username: config.bot-account.username,
+    version: config.server.version,
+    auth: config.bot-account.type // offline
+  });
 
-          .status-label { font-size: 18px; font-weight: 700; line-height: 1.2; transition: color 0.3s; }
-          .status-label.online  { color: #3fb950; }
-          .status-label.offline { color: #f85149; }
-          .status-detail { font-size: 13px; color: #8b949e; margin-top: 3px; }
+  bot.loadPlugin(pathfinder);
 
-          dl { margin: 0; }
-          .stat-card {
-            background: #161b22;
-            border: 1px solid #21262d;
-            border-radius: 10px;
-            padding: 16px 20px;
-            margin-bottom: 10px;
-          }
-          dt { font-size: 12px; color: #8b949e; font-weight: 600; margin-bottom: 4px; }
-          dd { margin: 0; font-size: 17px; font-weight: 600; color: #e6edf3; line-height: 1.3; }
-          .stat-detail { margin: 4px 0 0; font-size: 11px; color: #6e7681; }
+  bot.once('spawn', () => {
+    console.log(`[Bot] Successfully spawned in the world!`);
+    botState.connected = true;
+    botState.reconnectAttempts = 0;
 
-          .controls { margin-top: 8px; }
-          .btn-grid { display: grid; gap: 10px; margin-bottom: 10px; }
-          .btn-grid-2 { grid-template-columns: 1fr 1fr; }
+    // Anti-AFK ve Mesaj döngülerini başlat
+    startAutomation();
+  });
 
-          .btn-primary {
-            min-height: 52px; border-radius: 10px;
-            font-size: 15px; font-weight: 700;
-            cursor: pointer; letter-spacing: 0.3px;
-            transition: opacity 0.2s, filter 0.2s;
-            font-family: inherit;
-          }
-          .btn-primary:hover
+  bot.on('chat', (username, message) => {
+    if (username === bot.username) return;
+    console.log(`[Chat] <${username}> ${message}`);
+  });
+
+  bot.on('kicked', (reason) => {
+    console.log(`[Bot] Kicked from server: ${reason}`);
+    botState.connected = false;
+  });
+
+  bot.on('error', (err) => {
+    console.error(`[Bot Error]:`, err);
+    botState.errors.push(err.message);
+  });
+
+  bot.on('end', () => {
+    console.log(`[Bot] Connection lost. Reconnecting in ${config.utils['auto-reconnect-delay'] || 2000}ms...`);
+    botState.connected = false;
+
+    if (config.utils['auto-reconnect']) {
+      botState.reconnectAttempts++;
+      setTimeout(createBot, config.utils['auto-reconnect-delay'] || 2000);
+    }
+  });
+}
+
+function startAutomation() {
+  // Rastgele mesaj gönderme döngüsü
+  if (config.utils['chat-messages'].enabled && config.utils['chat-messages'].messages.length > 0) {
+    const msgs = config.utils['chat-messages'].messages;
+    const delay = (config.utils['chat-messages']['repeat-delay'] || 180) * 1000;
+
+    setInterval(() => {
+      if (!botState.connected) return;
+      const randomMsg = msgs[Math.floor(Math.random() * msgs.length)];
+      bot.chat(randomMsg);
+      console.log(`[Chat Sent]: ${randomMsg}`);
+    }, delay);
+  }
+
+  // Anti-AFK hareketleri (Zıplama / Bakış / Eğilme)
+  if (config.utils['anti-afk'].enabled) {
+    setInterval(() => {
+      if (!botState.connected) return;
+      if (config.utils['anti-afk'].sneak) {
+        bot.setControlState('sneak', true);
+        setTimeout(() => bot.setControlState('sneak', false), 1000);
+      }
+      if (config.movement['random-jump'] && config.movement['random-jump'].enabled) {
+        bot.setControlState('jump', true);
+        setTimeout(() => bot.setControlState('jump', false), 500);
+      }
+    }, 15000);
+  }
+}
+
+// Botu ilk kez başlat
+createBot();
+        
