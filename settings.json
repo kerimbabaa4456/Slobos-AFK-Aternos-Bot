@@ -12,7 +12,7 @@
     "try-creative": false
   },
   "position": {
-    "enabled": true,
+    "enabled": false,
     "x": 0,
     "y": 100,
     "z": 0
@@ -68,7 +68,7 @@
   },
   "combat": {
     "attack-mobs": true,
-    "attack-players": true,
+    "attack-players": false,
     "retaliate": true,
     "forget-attacker-time": 30000,
     "auto-eat": true
